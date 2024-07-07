@@ -3,6 +3,7 @@ package taglib
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -39,7 +40,20 @@ func (e *Extractor) Version() string {
 }
 
 func (e *Extractor) extractMetadata(filePath string) (metadata.ParsedTags, error) {
+
+	var title = ""
+	mediaExt := filepath.Ext(filePath)
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		title = strings.TrimSuffix(filepath.Base(filePath), mediaExt)
+		filePath = filepath.Dir(filePath) + mediaExt
+	}
 	tags, err := Read(filePath)
+
+	if title != "" {
+		tags["title"] = []string{title}
+		tags["labeled"] = []string{filePath}
+	}
+
 	if err != nil {
 		log.Warn("TagLib: Error reading metadata from file. Skipping", "filePath", filePath, err)
 		return nil, err

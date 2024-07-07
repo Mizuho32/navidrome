@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -74,7 +75,14 @@ func (ms *mediaStreamer) DoStream(ctx context.Context, mf *model.MediaFile, reqF
 			"requestBitrate", reqBitRate, "requestFormat", reqFormat, "requestOffset", reqOffset,
 			"originalBitrate", mf.BitRate, "originalFormat", mf.Suffix,
 			"selectedBitrate", bitRate, "selectedFormat", format)
-		f, err := os.Open(mf.Path)
+
+		path := mf.Path
+		f, err := os.Open(path)
+		if err != nil {
+			path = filepath.Dir(mf.Path) + filepath.Ext(mf.Path)
+			f, err = os.Open(path)
+		}
+
 		if err != nil {
 			return nil, err
 		}
@@ -126,6 +134,7 @@ func (s *Stream) ModTime() time.Time  { return s.mf.UpdatedAt }
 func (s *Stream) EstimatedContentLength() int {
 	return int(s.mf.Duration * float32(s.bitRate) / 8 * 1024)
 }
+func (s *Stream) MF() *model.MediaFile { return s.mf }
 
 // TODO This function deserves some love (refactoring)
 func selectTranscodingOptions(ctx context.Context, ds model.DataStore, mf *model.MediaFile, reqFormat string, reqBitRate int) (format string, bitRate int) {

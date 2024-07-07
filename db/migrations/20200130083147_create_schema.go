@@ -104,6 +104,7 @@ create table if not exists media_file
 	year integer default 0 not null,
 	size integer default 0 not null,
 	suffix varchar(255) default '' not null,
+	start integer default 0 not null,
 	duration integer default 0 not null,
 	bit_rate integer default 0 not null,
 	genre varchar(255) default '' not null,

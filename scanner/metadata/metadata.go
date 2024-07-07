@@ -52,9 +52,14 @@ func Extract(files ...string) (map[string]Tags, error) {
 
 	result := map[string]Tags{}
 	for filePath, tags := range extractedTags {
-		fileInfo, err := os.Stat(filePath)
+		var realFilePath = filePath
+		if val, ok := tags["labeled"]; ok {
+			realFilePath = val[0]
+		}
+
+		fileInfo, err := os.Stat(realFilePath)
 		if err != nil {
-			log.Warn("Error stating file. Skipping", "filePath", filePath, err)
+			log.Warn("Error stating file. Skipping", "filePath", realFilePath, err)
 			continue
 		}
 
@@ -114,6 +119,12 @@ func (p ParsedTags) Map(customMappings ParsedTags) ParsedTags {
 		}
 	}
 	return p
+}
+
+type AudioFile struct {
+	FilePath string
+	Start    float32
+	Duration float32
 }
 
 type Tags struct {

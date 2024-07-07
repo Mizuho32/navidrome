@@ -188,6 +188,8 @@ func (s *scanner) setStatusEnd(folder string, lastUpdate time.Time) {
 }
 
 func (s *scanner) RescanAll(ctx context.Context, fullRescan bool) error {
+	log.Info(ctx, "RescanAll")
+
 	ctx = context.WithoutCancel(ctx)
 	s.once.Do(s.loadFolders)
 

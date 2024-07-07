@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -150,4 +151,28 @@ func (r *Values) BoolOr(param string, def bool) bool {
 		return def
 	}
 	return v
+}
+
+var re = regexp.MustCompile("[0-9]+")
+
+func GetRangeStartHeader(req *http.Request) (int, error) {
+	originalRange := req.Header.Get("Range")
+	found := re.FindAllString(originalRange, -1)
+	rangeStart, err := strconv.Atoi(found[0])
+
+	if err != nil {
+		return -1, err
+	}
+
+	return rangeStart, nil
+}
+
+func ModifyRangeHeader(req *http.Request, unit string, rangeStart int) error {
+	// Construct the new Range header value
+	newRange := fmt.Sprintf("%s=%d-", unit, rangeStart)
+
+	// Set the new Range header value
+	req.Header.Set("Range", newRange)
+
+	return nil
 }

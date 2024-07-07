@@ -14,12 +14,14 @@ import (
 	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
+	"github.com/navidrome/navidrome/utils/myhttp"
 	"github.com/navidrome/navidrome/utils/req"
 )
 
-func (api *Router) serveStream(ctx context.Context, w http.ResponseWriter, r *http.Request, stream *core.Stream, id string) {
+func (api *Router) serveStream(ctx context.Context, w http.ResponseWriter, r *http.Request, stream *core.Stream, id string, size int64, offset int64) {
 	if stream.Seekable() {
-		http.ServeContent(w, r, stream.Name(), stream.ModTime(), stream)
+		//http.ServeContent(w, r, stream.Name(), stream.ModTime(), stream)
+		myhttp.ServeContent(w, r, stream.Name(), stream.ModTime(), stream, size, offset)
 	} else {
 		// If the stream doesn't provide a size (i.e. is not seekable), we can't support ranges/content-length
 		w.Header().Set("Accept-Ranges", "none")
@@ -60,6 +62,10 @@ func (api *Router) Stream(w http.ResponseWriter, r *http.Request) (*responses.Su
 	format, _ := p.String("format")
 	timeOffset := p.IntOr("timeOffset", 0)
 
+	log.Debug("subsonic/Stream", "timeOffset", timeOffset)
+	ofst := int64(0)
+	log.Debug("subsonic/Stream", "ofst", ofst)
+
 	stream, err := api.streamer.NewStream(ctx, id, format, maxBitRate, timeOffset)
 	if err != nil {
 		return nil, err
@@ -75,7 +81,29 @@ func (api *Router) Stream(w http.ResponseWriter, r *http.Request) (*responses.Su
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("X-Content-Duration", strconv.FormatFloat(float64(stream.Duration()), 'G', -1, 32))
 
-	api.serveStream(ctx, w, r, stream, id)
+	start := stream.MF().Start
+	var ofst_byte int64
+	var size_byte int64
+	if start > 0.0 { // labeled
+		bitrate := float32(stream.MF().BitRate)
+		ofst_byte = int64(bitrate * start / 8 * 1024)
+		size_byte = int64(bitrate * stream.MF().Duration / 8 * 1024)
+	} else {
+		ofst_byte = 0
+		size_byte = -1
+	}
+
+	//return int(s.mf.Duration * float32(s.bitRate) / 8 * 1024)
+	//startRange, _ := req.GetRangeStartHeader(r)
+	//afterRange := startRange + ofst_byte
+	//req.ModifyRangeHeader(r, "bytes", startRange+ofst_byte)
+	//newRange := fmt.Sprintf("%s=%d-", "bytes", afterRange)
+	//log.Debug("OFST", "start", startRange, "after", afterRange, "new", newRange, "current", r.Header.Get("Range"))
+	//newRequest.Header.Set("Range", newRange)
+	//r.Header.Set("Range", newRange)
+	//stream.SeekOrigin = int64(estConLen / 2)
+
+	api.serveStream(ctx, w, r, stream, id, size_byte, ofst_byte)
 
 	return nil, nil
 }
@@ -144,7 +172,7 @@ func (api *Router) Download(w http.ResponseWriter, r *http.Request) (*responses.
 		disposition := fmt.Sprintf("attachment; filename=\"%s\"", stream.Name())
 		w.Header().Set("Content-Disposition", disposition)
 
-		api.serveStream(ctx, w, r, stream, id)
+		api.serveStream(ctx, w, r, stream, id, -1, 0)
 		return nil, nil
 	case *model.Album:
 		setHeaders(v.Name)

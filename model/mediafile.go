@@ -42,6 +42,7 @@ type MediaFile struct {
 	ReleaseDate          string  `structs:"release_date" json:"releaseDate,omitempty"`
 	Size                 int64   `structs:"size" json:"size"`
 	Suffix               string  `structs:"suffix" json:"suffix"`
+	Start                float32 `structs:"start" json:"start"`
 	Duration             float32 `structs:"duration" json:"duration"`
 	BitRate              int     `structs:"bit_rate" json:"bitRate"`
 	SampleRate           int     `structs:"sample_rate" json:"sampleRate"`

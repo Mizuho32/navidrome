@@ -1,11 +1,14 @@
 package scanner
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -250,6 +253,100 @@ func (s *TagScanner) processDeletedDir(ctx context.Context, refresher *refresher
 	return err
 }
 
+// From https://stackoverflow.com/a/41433698
+func scanLines(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	if i := bytes.IndexAny(data, "\r\n"); i >= 0 {
+		if data[i] == '\n' {
+			// We have a line terminated by single newline.
+			return i + 1, data[0:i], nil
+		}
+		advance = i + 1
+		if len(data) > i+1 && data[i+1] == '\n' {
+			advance += 1
+		}
+		return advance, data[0:i], nil
+	}
+	// If we're at EOF, we have a final, non-terminated line. Return it.
+	if atEOF {
+		return len(data), data, nil
+	}
+	// Request more data.
+	return 0, nil, nil
+}
+
+// https://qiita.com/KemoKemo/items/d135ddc93e6f87008521
+func getFileNameWithoutExt(path string) string {
+	// Fixed with a nice method given by mattn-san
+	return filepath.Base(path[:len(path)-len(filepath.Ext(path))])
+}
+
+func parseTXT(ctx context.Context, mediaSuffix string, txtPath string, filesToUpdate []*metadata.AudioFile) (int, []*metadata.AudioFile, error) {
+	baseDir := filepath.Join(filepath.Dir(txtPath), getFileNameWithoutExt(txtPath))
+	file, err := os.Open(txtPath)
+	if err != nil {
+		return 0, filesToUpdate, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Split(scanLines)
+	var cnt int = 0
+	for scanner.Scan() {
+		line := scanner.Text()
+		log.Info(ctx, "Line:", line)
+		row := strings.Split(line, "\t")
+		start, _ := strconv.ParseFloat(row[0], 32)
+		end, _ := strconv.ParseFloat(row[1], 32)
+		dummyMediaPath := filepath.Join(baseDir, row[2]) + mediaSuffix
+		log.Info(ctx, "Path:", "path", dummyMediaPath, "start", start, "end", end)
+
+		filesToUpdate = append(filesToUpdate, &metadata.AudioFile{FilePath: dummyMediaPath, Start: float32(start), Duration: float32(end - start)})
+		cnt++
+	}
+
+	return cnt, filesToUpdate, nil
+}
+
+func extractTXT(ctx context.Context, filePath string) ([]*metadata.AudioFile, error) {
+	afArray := []*metadata.AudioFile{}
+
+	txtPath := filepath.Join(filepath.Dir(filePath), getFileNameWithoutExt(filePath)+".txt")
+	if _, err := os.Stat(txtPath); os.IsNotExist(err) { // txt file not exists
+		afArray = append(afArray, &metadata.AudioFile{FilePath: filePath, Start: -1.0, Duration: -1.0})
+		return afArray, nil
+	}
+
+	mediaSuffix := filepath.Ext(filePath)
+
+	baseDir := filepath.Join(filepath.Dir(txtPath), getFileNameWithoutExt(txtPath))
+	file, err := os.Open(txtPath)
+	if err != nil {
+		return afArray, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Split(scanLines)
+	var cnt int = 0
+	for scanner.Scan() {
+		line := scanner.Text()
+		log.Info(ctx, "Line:", line)
+		row := strings.Split(line, "\t")
+		start, _ := strconv.ParseFloat(row[0], 32)
+		end, _ := strconv.ParseFloat(row[1], 32)
+		dummyMediaPath := filepath.Join(baseDir, row[2]) + mediaSuffix
+		log.Info(ctx, "Path:", "path", dummyMediaPath, "start", start, "end", end)
+
+		afArray = append(afArray, &metadata.AudioFile{FilePath: dummyMediaPath, Start: float32(start), Duration: float32(end - start)})
+		cnt++
+	}
+
+	return afArray, nil
+}
+
 func (s *TagScanner) processChangedDir(ctx context.Context, refresher *refresher, fullScan bool, dir string) error {
 	start := time.Now()
 
@@ -281,30 +378,45 @@ func (s *TagScanner) processChangedDir(ctx context.Context, refresher *refresher
 
 	// If track from folder is newer than the one in DB, select for update/insert in DB
 	log.Trace(ctx, "Processing changed folder", "dir", dir, "tracksInDB", len(currentTracks), "tracksInFolder", len(files))
-	var filesToUpdate []string
-	for filePath, entry := range files {
-		c, inDB := currentTracks[filePath]
-		if !inDB || fullScan {
-			filesToUpdate = append(filesToUpdate, filePath)
-			s.cnt.added++
-		} else {
-			info, err := entry.Info()
-			if err != nil {
-				log.Error("Could not stat file", "filePath", filePath, err)
-				continue
+	var filesToUpdate []*metadata.AudioFile
+	for _filePath_, entry := range files {
+		tmp, _ := extractTXT(ctx, _filePath_)
+		for _, af := range tmp {
+			filePath := af.FilePath
+			c, inDB := currentTracks[filePath]
+			if !inDB || fullScan {
+				//txtPath := filepath.Join(filepath.Dir(filePath), getFileNameWithoutExt(filePath)+".txt")
+				//if _, err := os.Stat(txtPath); !os.IsNotExist(err) { // txt file exists
+				//	var tmpcnt int
+				//	tmpcnt, filesToUpdate, _ = parseTXT(ctx, filepath.Ext(filePath), txtPath, filesToUpdate)
+				//	s.cnt.added += int64(tmpcnt)
+				//} else {
+				filesToUpdate = append(filesToUpdate, af)
+				s.cnt.added++
+				//}
+			} else {
+				if af.Start >= 0 && af.Duration >= 0 { // FIXME: entry for labeled audio file
+					continue
+				}
+
+				info, err := entry.Info()
+				if err != nil {
+					log.Error("Could not stat file", "filePath", filePath, err)
+					continue
+				}
+				if info.ModTime().After(c.UpdatedAt) {
+					filesToUpdate = append(filesToUpdate, af)
+					s.cnt.updated++
+				}
 			}
-			if info.ModTime().After(c.UpdatedAt) {
-				filesToUpdate = append(filesToUpdate, filePath)
-				s.cnt.updated++
-			}
+
+			// Force a refresh of the album and artist, to cater for cover art files
+			refresher.accumulate(c)
+
+			// Only leaves in orphanTracks the ones not found in the folder. After this loop any remaining orphanTracks
+			// are considered gone from the music folder and will be deleted from DB
+			delete(orphanTracks, filePath)
 		}
-
-		// Force a refresh of the album and artist, to cater for cover art files
-		refresher.accumulate(c)
-
-		// Only leaves in orphanTracks the ones not found in the folder. After this loop any remaining orphanTracks
-		// are considered gone from the music folder and will be deleted from DB
-		delete(orphanTracks, filePath)
 	}
 
 	numUpdatedTracks := 0
@@ -356,7 +468,7 @@ func (s *TagScanner) addOrUpdateTracksInDB(
 	refresher *refresher,
 	dir string,
 	currentTracks map[string]model.MediaFile,
-	filesToUpdate []string,
+	filesToUpdate []*metadata.AudioFile,
 ) (int, error) {
 	numUpdatedTracks := 0
 
@@ -390,15 +502,29 @@ func (s *TagScanner) addOrUpdateTracksInDB(
 	return numUpdatedTracks, nil
 }
 
-func (s *TagScanner) loadTracks(filePaths []string) (model.MediaFiles, error) {
-	mds, err := metadata.Extract(filePaths...)
+func (s *TagScanner) loadTracks(filePaths []*metadata.AudioFile) (model.MediaFiles, error) {
+
+	filePaths2 := make([]string, len(filePaths))
+	for i := range filePaths2 {
+		filePaths2[i] = filePaths[i].FilePath
+	}
+
+	mds, err := metadata.Extract(filePaths2...)
 	if err != nil {
 		return nil, err
 	}
 
 	var mfs model.MediaFiles
-	for _, md := range mds {
+	//for _, md := range mds {
+	for idx := range filePaths {
+		af := filePaths[idx]
+		md := mds[af.FilePath]
 		mf := s.mapper.ToMediaFile(md)
+		if af.Duration > 0 {
+			mf.Start = af.Start
+			mf.Duration = af.Duration
+		}
+		log.Debug("MF:", "title", mf.Title, "start", mf.Start, "duration", mf.Duration)
 		mfs = append(mfs, mf)
 	}
 	return mfs, nil
