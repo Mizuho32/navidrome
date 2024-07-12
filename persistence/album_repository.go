@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Masterminds/squirrel"
 	. "github.com/Masterminds/squirrel"
 	"github.com/deluan/rest"
 	"github.com/navidrome/navidrome/conf"
@@ -64,6 +65,7 @@ func NewAlbumRepository(ctx context.Context, db dbx.Builder) model.AlbumReposito
 		"name":            fullTextFilter,
 		"compilation":     booleanFilter,
 		"artist_id":       artistFilter,
+		"artists":         artistsFilter,
 		"year":            yearFilter,
 		"recently_played": recentlyPlayedFilter,
 		"starred":         booleanFilter,
@@ -120,6 +122,33 @@ func yearFilter(_ string, value interface{}) Sqlizer {
 
 func artistFilter(_ string, value interface{}) Sqlizer {
 	return Like{"all_artist_ids": fmt.Sprintf("%%%s%%", value)}
+}
+
+func artistsFilter(_ string, value interface{}) squirrel.Sqlizer {
+	if artists, ok := value.(string); ok {
+		accept := artists[0:1] == "t"
+		artists = artists[1:]
+
+		if accept && artists == "*" { // all accept
+			return squirrel.Expr("1=1") // FIXME
+		} else if !accept && artists == "*" {
+			return squirrel.Expr("1=0") // FIXME
+		}
+
+		// FIXME: decode CSV
+		artistList := strings.Split(artists, ",")
+		expr := Or{}
+		for _, artist := range artistList {
+			expr = append(expr, squirrel.Like{"artist": fmt.Sprintf("%%%s%%", artist)})
+		}
+
+		if accept {
+			return expr
+		}
+		return squirrel.Expr("NOT (?)", expr)
+	}
+
+	return squirrel.Expr("1=1")
 }
 
 func (r *albumRepository) CountAll(options ...model.QueryOptions) (int64, error) {

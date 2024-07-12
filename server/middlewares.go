@@ -18,6 +18,7 @@ import (
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/consts"
 	"github.com/navidrome/navidrome/log"
+	"github.com/navidrome/navidrome/model"
 	"github.com/navidrome/navidrome/model/request"
 	"github.com/unrolled/secure"
 )
@@ -296,5 +297,33 @@ func URLParamsMiddleware(next http.Handler) http.Handler {
 
 		// Call the next handler in the chain with the modified request and response.
 		next.ServeHTTP(w, r)
+	})
+}
+
+func GetUsernameMiddleware(ds model.DataStore) func(http.Handler) http.Handler {
+	return (func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			user, ok := request.UserFrom(ctx)
+			if ok && user.UserName != "admin" {
+				ur := ds.UserProps(ctx)
+				artistList, err1 := ur.Get(user.ID, "filter")
+				accept, err2 := ur.Get(user.ID, "filter_accept")
+				log.Debug("USERNAME:", "name", user.UserName, "id", user.ID, "list", artistList, "type", accept)
+
+				params, _ := url.ParseQuery(r.URL.RawQuery)
+				if err1 == nil && err2 == nil {
+					params.Add("artists", accept+artistList)
+				} else {
+					accept := "t"
+					if !conf.Server.ArtistFilterDefaultAccept {
+						accept = "f"
+					}
+					params.Add("artists", accept+"*")
+				}
+				r.URL.RawQuery = params.Encode()
+			}
+			next.ServeHTTP(w, r)
+		})
 	})
 }
