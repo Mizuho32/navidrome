@@ -66,7 +66,8 @@ const (
 
 	DefaultScannerExtractor = "taglib"
 
-	Zwsp = string('\u200b')
+	Zwsp                      = string('\u200b')
+	ArtistFilterDefaultAccept = true
 )
 
 // Cache options

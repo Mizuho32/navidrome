@@ -84,6 +84,7 @@ type configOptions struct {
 	Prometheus                   prometheusOptions
 	Scanner                      scannerOptions
 	Jukebox                      jukeboxOptions
+	ArtistFilterDefaultAccept    bool
 
 	Agents       string
 	LastFM       lastfmOptions
@@ -358,6 +359,7 @@ func init() {
 	viper.SetDefault("listenbrainz.baseurl", "https://api.listenbrainz.org/1/")
 
 	viper.SetDefault("httpsecurityheaders.customframeoptionsvalue", "DENY")
+	viper.SetDefault("artistfilterdefaultaccept", consts.ArtistFilterDefaultAccept)
 
 	// DevFlags. These are used to enable/disable debugging and incomplete features
 	viper.SetDefault("devlogsourceline", false)

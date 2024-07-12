@@ -50,6 +50,7 @@ func createInitialAdminUser(ds model.DataStore, initialPassword string) error {
 		panic(fmt.Sprintf("Could not access User table: %s", err))
 	}
 	if c == 0 {
+		user_prop := ds.UserProps(context.TODO())
 		id := uuid.NewString()
 		log.Warn("Creating initial admin user. This should only be used for development purposes!!",
 			"user", consts.DevInitialUserName, "password", initialPassword, "id", id)
@@ -65,6 +66,12 @@ func createInitialAdminUser(ds model.DataStore, initialPassword string) error {
 		if err != nil {
 			log.Error("Could not create initial admin user", "user", initialUser, err)
 		}
+		user_prop.Put(id, "filter", "*")
+		acc := "t"
+		if !conf.Server.ArtistFilterDefaultAccept {
+			acc = "f"
+		}
+		user_prop.Put(id, "filter_accept", acc) // accept "filter" or deny
 	}
 	return err
 }
