@@ -66,12 +66,19 @@ func createInitialAdminUser(ds model.DataStore, initialPassword string) error {
 		if err != nil {
 			log.Error("Could not create initial admin user", "user", initialUser, err)
 		}
-		user_prop.Put(id, "filter", "*")
+
+		err = user_prop.Put(id, "filter", "*")
+		if err != nil {
+			log.Error("Error while setting filter", "err", err)
+		}
 		acc := "t"
 		if !conf.Server.ArtistFilterDefaultAccept {
 			acc = "f"
 		}
-		user_prop.Put(id, "filter_accept", acc) // accept "filter" or deny
+		if err = user_prop.Put(id, "filter_accept", acc); err != nil { // accept "filter" or deny
+			log.Error("Error while setting filter_accept", "err", err)
+
+		}
 	}
 	return err
 }
