@@ -154,7 +154,11 @@ func (r *artistRepository) getIndexKey(a *model.Artist) string {
 
 // TODO Cache the index (recalculate when there are changes to the DB)
 func (r *artistRepository) GetIndex() (model.ArtistIndexes, error) {
-	all, err := r.GetAll(model.QueryOptions{Sort: "order_artist_name"})
+	return r.GetIndexOrig(model.QueryOptions{Sort: "order_artist_name"})
+}
+
+func (r *artistRepository) GetIndexOrig(query model.QueryOptions) (model.ArtistIndexes, error) {
+	all, err := r.GetAll(query)
 	if err != nil {
 		return nil, err
 	}

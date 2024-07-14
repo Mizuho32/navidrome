@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/persistence"
 	"github.com/navidrome/navidrome/server/public"
 	"github.com/navidrome/navidrome/server/subsonic/filter"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
@@ -37,7 +39,26 @@ func (api *Router) getArtistIndex(r *http.Request, libId int, ifModifiedSince ti
 
 	var indexes model.ArtistIndexes
 	if lib.LastScanAt.After(ifModifiedSince) {
-		indexes, err = api.ds.Artist(ctx).GetIndex()
+
+		// filter artists
+		filters, err := parseFilters(r.URL.Query())
+		if err != nil {
+			return nil, err
+		}
+
+		value, ok := filters["artists"]
+		opts := model.QueryOptions{}
+
+		if ok {
+			artistsFilter := persistence.GetArtistsFilter("full_text", true)("", value)
+			expr := squirrel.And{artistsFilter}
+			if opts.Filters != nil {
+				expr = append(expr, opts.Filters)
+			}
+			opts.Filters = expr
+		}
+
+		indexes, err = api.ds.Artist(ctx).GetIndexOrig(opts)
 		if err != nil {
 			log.Error(ctx, "Error retrieving Indexes", err)
 			return nil, err
