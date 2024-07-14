@@ -159,6 +159,10 @@ func validateCredentials(user *model.User, pass, token, salt, jwt string) error 
 }
 
 func getPlayer(players core.Players) func(next http.Handler) http.Handler {
+	return getPlayerOrig(players, nil)
+}
+
+func getPlayerOrig(players core.Players, ds model.DataStore) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
@@ -168,6 +172,13 @@ func getPlayer(players core.Players) func(next http.Handler) http.Handler {
 			ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 			userAgent := canonicalUserAgent(r)
 			player, trc, err := players.Register(ctx, playerId, client, userAgent, ip)
+
+			//user, _ := request.UserFrom(ctx)
+			//log.Debug("GetPlayer:", "user", user.ID)
+			if ds != nil {
+				server.SetArtists(ds, &ctx, r)
+			}
+
 			if err != nil {
 				log.Error(ctx, "Could not register player", "username", userName, "client", client, err)
 			} else {

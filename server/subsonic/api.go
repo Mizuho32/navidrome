@@ -80,7 +80,7 @@ func (api *Router) routes() http.Handler {
 		h(r, "getLicense", api.GetLicense)
 	})
 	r.Group(func(r chi.Router) {
-		r.Use(getPlayer(api.players))
+		r.Use(getPlayerOrig(api.players, api.ds))
 		h(r, "getMusicFolders", api.GetMusicFolders)
 		h(r, "getIndexes", api.GetIndexes)
 		h(r, "getArtists", api.GetArtists)
@@ -98,7 +98,7 @@ func (api *Router) routes() http.Handler {
 		h(r, "getSimilarSongs2", api.GetSimilarSongs2)
 	})
 	r.Group(func(r chi.Router) {
-		r.Use(getPlayer(api.players))
+		r.Use(getPlayerOrig(api.players, api.ds))
 		hr(r, "getAlbumList", api.GetAlbumList)
 		hr(r, "getAlbumList2", api.GetAlbumList2)
 		h(r, "getStarred", api.GetStarred)

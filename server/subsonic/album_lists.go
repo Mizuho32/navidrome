@@ -2,16 +2,44 @@ package subsonic
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/Masterminds/squirrel"
 	"github.com/navidrome/navidrome/log"
 	"github.com/navidrome/navidrome/model"
+	"github.com/navidrome/navidrome/persistence"
 	"github.com/navidrome/navidrome/server/subsonic/filter"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
 	"github.com/navidrome/navidrome/utils/req"
 )
+
+func parseFilters(params url.Values) (map[string]interface{}, error) {
+	var filterStr = params.Get("_filters")
+	filters := make(map[string]interface{})
+	if filterStr != "" {
+		filterStr, _ = url.QueryUnescape(filterStr)
+		if err := json.Unmarshal([]byte(filterStr), &filters); err != nil {
+			return nil, fmt.Errorf("invalid filter specification: %s - %v", filterStr, err)
+		}
+	}
+	for k, v := range params {
+		if strings.HasPrefix(k, "_") {
+			continue
+		}
+		if len(v) == 1 {
+			filters[k] = v[0]
+		} else {
+			filters[k] = v
+		}
+	}
+	return filters, nil
+}
 
 func (api *Router) getAlbumList(r *http.Request) (model.Albums, int64, error) {
 	p := req.Params(r)
@@ -57,6 +85,21 @@ func (api *Router) getAlbumList(r *http.Request) (model.Albums, int64, error) {
 	default:
 		log.Error(r, "albumList type not implemented", "type", typ)
 		return nil, 0, newError(responses.ErrorGeneric, "type '%s' not implemented", typ)
+	}
+
+	filters, err := parseFilters(r.URL.Query())
+	if err != nil {
+		return nil, 0, err
+	}
+
+	value, ok := filters["artists"]
+	if ok {
+		artistsFilter := persistence.GetArtistsFilter("artist", false)("", value)
+		expr := squirrel.And{artistsFilter}
+		if opts.Filters != nil {
+			expr = append(expr, opts.Filters)
+		}
+		opts.Filters = expr
 	}
 
 	opts.Offset = p.IntOr("offset", 0)
