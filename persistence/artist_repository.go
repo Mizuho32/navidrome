@@ -65,6 +65,7 @@ func NewArtistRepository(ctx context.Context, db dbx.Builder) model.ArtistReposi
 		"id":      idFilter(r.tableName),
 		"name":    fullTextFilter,
 		"starred": booleanFilter,
+		"artists": GetArtistsFilter("full_text", true),
 	}
 	if conf.Server.PreferSortTags {
 		r.sortMappings = map[string]string{

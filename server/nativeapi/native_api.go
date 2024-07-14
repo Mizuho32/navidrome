@@ -68,7 +68,7 @@ func (n *Router) R(r chi.Router, pathPrefix string, model interface{}, persistab
 
 func (n *Router) RX(r chi.Router, pathPrefix string, constructor rest.RepositoryConstructor, persistable bool) {
 	r.Route(pathPrefix, func(r chi.Router) {
-		if pathPrefix == "/album" {
+		if pathPrefix == "/album" || pathPrefix == "/song" || pathPrefix == "/artist" {
 			r.Use(server.GetUsernameMiddleware(n.ds))
 		}
 		r.Get("/", rest.GetAll(constructor))

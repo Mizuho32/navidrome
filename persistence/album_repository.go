@@ -65,7 +65,7 @@ func NewAlbumRepository(ctx context.Context, db dbx.Builder) model.AlbumReposito
 		"name":            fullTextFilter,
 		"compilation":     booleanFilter,
 		"artist_id":       artistFilter,
-		"artists":         artistsFilter,
+		"artists":         GetArtistsFilter("artist", false),
 		"year":            yearFilter,
 		"recently_played": recentlyPlayedFilter,
 		"starred":         booleanFilter,
@@ -124,31 +124,36 @@ func artistFilter(_ string, value interface{}) Sqlizer {
 	return Like{"all_artist_ids": fmt.Sprintf("%%%s%%", value)}
 }
 
-func artistsFilter(_ string, value interface{}) squirrel.Sqlizer {
-	if artists, ok := value.(string); ok {
-		accept := artists[0:1] == "t"
-		artists = artists[1:]
+func GetArtistsFilter(fieldName string, downcase bool) func(_ string, value interface{}) squirrel.Sqlizer {
+	return func(_ string, value interface{}) squirrel.Sqlizer {
+		if artists, ok := value.(string); ok {
+			accept := artists[0:1] == "t"
+			artists = artists[1:]
 
-		if accept && artists == "*" { // all accept
-			return squirrel.Expr("1=1") // FIXME
-		} else if !accept && artists == "*" {
-			return squirrel.Expr("1=0") // FIXME
+			if accept && artists == "*" { // all accept
+				return squirrel.Expr("1=1") // FIXME
+			} else if !accept && artists == "*" {
+				return squirrel.Expr("1=0") // FIXME
+			}
+
+			// FIXME: decode CSV
+			artistList := strings.Split(artists, ",")
+			expr := Or{}
+			for _, artist := range artistList {
+				if downcase {
+					artist = strings.ToLower(artist)
+				}
+				expr = append(expr, squirrel.Like{fieldName: fmt.Sprintf("%%%s%%", artist)})
+			}
+
+			if accept {
+				return expr
+			}
+			return squirrel.Expr("NOT (?)", expr)
 		}
 
-		// FIXME: decode CSV
-		artistList := strings.Split(artists, ",")
-		expr := Or{}
-		for _, artist := range artistList {
-			expr = append(expr, squirrel.Like{"artist": fmt.Sprintf("%%%s%%", artist)})
-		}
-
-		if accept {
-			return expr
-		}
-		return squirrel.Expr("NOT (?)", expr)
+		return squirrel.Expr("1=1")
 	}
-
-	return squirrel.Expr("1=1")
 }
 
 func (r *albumRepository) CountAll(options ...model.QueryOptions) (int64, error) {
@@ -203,6 +208,9 @@ func (r *albumRepository) GetAll(options ...model.QueryOptions) (model.Albums, e
 	res, err := r.GetAllWithoutGenres(options...)
 	if err != nil {
 		return nil, err
+	}
+	for _, album := range res {
+		log.Debug("GetAll", "artist", album.Artist)
 	}
 	err = loadAllGenres(r, res)
 	return res, err
